@@ -41,7 +41,116 @@ POSSIBILITY OF SUCH DAMAGE.
 using namespace DD::Image;
 using namespace Alembic::AbcGeom;
 
+void fillPoints(PointList& oPointArray,
+                    Alembic::Abc::P3fArraySamplePtr iPoints,
+                    Alembic::Abc::P3fArraySamplePtr iCeilPoints, double alpha)
+{
+    //printf("fillPoints()\n");
+    
+    unsigned int numPoints = static_cast<unsigned int>(iPoints->size());
+    oPointArray.resize(numPoints);
 
+    if (alpha == 0 || iCeilPoints == NULL)
+    {
+        for (unsigned int i = 0; i < numPoints; ++i)
+        {
+            oPointArray[i].set( (*iPoints)[i].x, 
+                                (*iPoints)[i].y, 
+                                (*iPoints)[i].z);
+        }
+    }
+    else
+    {
+        for (unsigned int i = 0; i < numPoints; ++i)
+        {
+            oPointArray[i].set( simpleLerp<float>(alpha,
+                                        (*iPoints)[i].x, (*iCeilPoints)[i].x),
+                                simpleLerp<float>(alpha,
+                                        (*iPoints)[i].y, (*iCeilPoints)[i].y),
+                                simpleLerp<float>(alpha,
+                                        (*iPoints)[i].z, (*iCeilPoints)[i].z));
+        }
+    }
+
+}
+
+void readPoly(Alembic::AbcGeom::IPolyMesh iPoly, PointList& oPoints, chrono_t iFrame, bool poly_initialized)
+{
+    Alembic::AbcGeom::IPolyMeshSchema schema = iPoly.getSchema();
+    Alembic::AbcGeom::MeshTopologyVariance ttype = schema.getTopologyVariance();
+    
+    Alembic::AbcCoreAbstract::index_t index, ceilIndex;
+    double alpha = getWeightAndIndex(iFrame, schema.getTimeSampling(), schema.getNumSamples(), index, ceilIndex);
+
+    //vector<Vector3> pointArray;
+    Alembic::Abc::P3fArraySamplePtr ceilPoints;
+    
+    //printf(" * mesh samples: %d\n", (unsigned) schema.getNumSamples());
+    //printf(" * normal samples: %d\n", (unsigned) schema.getNormalsParam().getNumSamples());
+    //printf(" * UV samples: %d\n", (unsigned) schema.getUVsParam().getNumSamples());
+
+    if (poly_initialized && schema.getNumSamples() <= 1)
+        return;
+        
+    // we can just read the points
+    if (ttype != Alembic::AbcGeom::kHeterogenousTopology && poly_initialized && schema.getNumSamples() > 1)
+    {
+        
+        // read point positions into array
+        Alembic::Abc::P3fArraySamplePtr points = schema.getPositionsProperty().getValue(Alembic::Abc::ISampleSelector(index));
+
+        // if sub-frame sample, read upper frame points too
+        if (alpha != 0.0)
+            ceilPoints = schema.getPositionsProperty().getValue( Alembic::Abc::ISampleSelector(ceilIndex) );
+        //else
+        //    return;
+                    
+        fillPoints(oPoints, points, ceilPoints, alpha);  // copy point positions into array (interpolate if alpha != 0)
+        /*
+        ioMesh.setPoints(pointArray, MSpace::kObject);      // set mesh point positions
+        setColors(iFrame, ioMesh, iNode.mC3s, iNode.mC4s, !iInitialized); // set colors
+
+        // update normals, if more than one sample
+        if (schema.getNormalsParam().getNumSamples() > 1)
+        {
+            setPolyNormals(iFrame, ioMesh, schema.getNormalsParam());
+        }
+
+        // update uvs, if more than one sample
+        if (schema.getUVsParam().getNumSamples() > 1)
+        {
+            setUVs(iFrame, ioMesh, schema.getUVsParam());
+        }
+        */
+    }
+    else
+    {
+        // we need to read the topology
+        Alembic::AbcGeom::IPolyMeshSchema::Sample samp;
+        schema.get(samp, Alembic::Abc::ISampleSelector(index));
+    
+        if (alpha != 0.0 && ttype != Alembic::AbcGeom::kHeterogenousTopology)
+        {
+            ceilPoints = schema.getPositionsProperty().getValue(
+                    Alembic::Abc::ISampleSelector(ceilIndex) );
+        }
+    
+        fillPoints(oPoints, samp.getPositions(), ceilPoints, alpha);
+    
+        /*
+        fillTopology(ioMesh, iParent, pointArray, samp.getFaceIndices(),
+                     samp.getFaceCounts());
+    
+        setPolyNormals(iFrame, ioMesh, schema.getNormalsParam());
+        setUVs(iFrame, ioMesh, schema.getUVsParam());
+        setColors(iFrame, ioMesh, iNode.mC3s, iNode.mC4s, !iInitialized);
+        */
+    }
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////
+            
 void writePoints(Alembic::AbcGeom::IPolyMesh iPoly, PointList& points, chrono_t curTime = 0, bool interpolate = false) {
 
 	IPolyMeshSchema mesh = iPoly.getSchema();
@@ -51,15 +160,17 @@ void writePoints(Alembic::AbcGeom::IPolyMesh iPoly, PointList& points, chrono_t 
 	const ISampleSelector iss(curTime);
 	mesh.get( mesh_samp, iss );
 
-	IObject iObj = mesh.getObject();
-	Matrix4 xform = getConcatMatrix( iObj, curTime, interpolate );
+	//IObject iObj = mesh.getObject();
+	//Matrix4 xform = getConcatMatrix( iObj, curTime, interpolate );
 
 	Vector3 pos;
 
-	unsigned numPoints =  mesh_samp.getPositions()->size();
-
+        
+        unsigned numPoints =  mesh_samp.getPositions()->size();
+        
+        
 	points.resize(numPoints);
-
+        
 
 	Alembic::AbcCoreAbstract::index_t floorIdx = 0;
 	Alembic::AbcCoreAbstract::index_t ceilIdx = 0;
@@ -92,8 +203,9 @@ void writePoints(Alembic::AbcGeom::IPolyMesh iPoly, PointList& points, chrono_t 
 			Imath::V3f p_end = mesh_samp_end.getPositions()->get()[i];
 			pos = lerp(Vector3(p_start.getValue()) , Vector3(p_end.getValue()), amt );
 
-			points[i] = xform.transform(pos);
-		}
+                        //points[i] = xform.transform(pos);
+                        points[i] = pos;
+                }
 
 	}
 
@@ -103,8 +215,9 @@ void writePoints(Alembic::AbcGeom::IPolyMesh iPoly, PointList& points, chrono_t 
 		for (unsigned i = 0; i < numPoints; i++) {
 			Imath::V3f p = mesh_samp.getPositions()->get()[i];
 			pos = Vector3(p.x, p.y, p.z);
-			points[i] = xform.transform(pos);
-		}
+                        //points[i] = xform.transform(pos);
+                        points[i] = pos;
+                }
 	}
 
 }
@@ -230,6 +343,19 @@ void fillPrimitiveIndices(const Alembic::AbcGeom::IObject iObj,
 	}
 }
 
+void fillPrimitiveIndices(const Alembic::AbcGeom::IPolyMesh poly,
+                          Int32ArraySamplePtr& _fc,
+                          Int32ArraySamplePtr& _fi,
+                          chrono_t curTime = 0)
+{
+    IPolyMeshSchema mesh = poly.getSchema();
+    TimeSamplingPtr ts = mesh.getTimeSampling();
+    IPolyMeshSchema::Sample mesh_samp;
+    const ISampleSelector iss(curTime);
+    mesh.get( mesh_samp, iss );
+    _fc = mesh_samp.getFaceCounts();
+    _fi = mesh_samp.getFaceIndices();
+}
 
 //-*****************************************************************************
 
@@ -251,6 +377,13 @@ Alembic::AbcGeom::IV2fGeomParam getUVsParam(const Alembic::AbcGeom::IObject iObj
 
 }
 
+Alembic::AbcGeom::IV2fGeomParam getUVsParam(const Alembic::AbcGeom::IPolyMesh poly)
+{
+    IV2fGeomParam uvParam;
+    IPolyMeshSchema mesh = poly.getSchema();
+    uvParam = mesh.getUVsParam();
+    return uvParam;
+}
 
 //-*****************************************************************************
 
@@ -266,6 +399,15 @@ Alembic::AbcGeom::IN3fGeomParam getNsParam(const Alembic::AbcGeom::IObject iObj)
 
 	return nParam;
 
+}
+
+Alembic::AbcGeom::IN3fGeomParam getNsParam(const Alembic::AbcGeom::IPolyMesh poly)
+{
+    IN3fGeomParam nParam;
+    IPolyMeshSchema mesh = poly.getSchema();
+    nParam = mesh.getNormalsParam();
+
+    return nParam;
 }
 
 //-*****************************************************************************
@@ -425,22 +567,26 @@ Box3d getBounds( IObject iObj, chrono_t curTime = 0 )
 
 bool isTopologyChanging(IObject iObj)
 {
-	if (Alembic::AbcGeom::IPolyMesh::matches(iObj.getHeader())) {
-		IPolyMesh iPoly(iObj, Alembic::Abc::kWrapExisting);
-		IPolyMeshSchema mesh = iPoly.getSchema();
-		return (mesh.getTopologyVariance() == kHeterogenousTopology);
-	}
+    if (Alembic::AbcGeom::IPolyMesh::matches(iObj.getHeader())) {
+        IPolyMesh iPoly(iObj, Alembic::Abc::kWrapExisting);
+        IPolyMeshSchema mesh = iPoly.getSchema();
+        return (mesh.getTopologyVariance() == kHeterogenousTopology);
+    }
 
-	else if (Alembic::AbcGeom::ISubD::matches(iObj.getHeader())) {
-		ISubD iSub(iObj, Alembic::Abc::kWrapExisting);
-		ISubDSchema mesh = iSub.getSchema();
-		return (mesh.getTopologyVariance() == kHeterogenousTopology);
-	}
+    else if (Alembic::AbcGeom::ISubD::matches(iObj.getHeader())) {
+        ISubD iSub(iObj, Alembic::Abc::kWrapExisting);
+        ISubDSchema mesh = iSub.getSchema();
+        return (mesh.getTopologyVariance() == kHeterogenousTopology);
+    }
 
-	return false;
+    return false;
 }
 
-//-*****************************************************************************
+bool isTopologyChanging(IPolyMesh poly)
+{
+    IPolyMeshSchema mesh = poly.getSchema();
+    return (mesh.getTopologyVariance() == kHeterogenousTopology);
+}
 
 bool isTopologyChanging(std::vector<Alembic::AbcGeom::IObject> _objs)
 {
@@ -452,6 +598,30 @@ bool isTopologyChanging(std::vector<Alembic::AbcGeom::IObject> _objs)
 	}
 
 	return false;
+}
+
+//-*****************************************************************************
+
+bool isDeforming(IPolyMesh poly)
+{
+    IPolyMeshSchema mesh = poly.getSchema();
+    return (mesh.getNumSamples() > 1);
+}
+
+//-*****************************************************************************
+
+bool isNormalChanging(IPolyMesh poly)
+{
+    IPolyMeshSchema mesh = poly.getSchema();
+    return (mesh.getNormalsParam().getNumSamples() > 1);
+}
+
+//-*****************************************************************************
+
+bool isUVChanging(IPolyMesh poly)
+{
+    IPolyMeshSchema mesh = poly.getSchema();
+    return (mesh.getUVsParam().getNumSamples() > 1);
 }
 
 //-*****************************************************************************
@@ -505,6 +675,32 @@ void buildABCPrimitives(GeometryList& out, unsigned obj, const Alembic::AbcGeom:
 		// Move offset
 		v_offset += num_verts;
 	}
+}
+
+void buildABCPrimitives(GeometryList& out, unsigned obj, const Alembic::AbcGeom::IPolyMesh poly, chrono_t curTime)
+{
+    Int32ArraySamplePtr _fc;
+    Int32ArraySamplePtr _fi;
+
+    fillPrimitiveIndices(poly, _fc, _fi, curTime);
+
+    unsigned v_offset = 0;
+    unsigned numPrimitives =_fc->size();
+	// Create primitives
+    for (unsigned i = 0; i < numPrimitives; i++) {
+        unsigned num_verts = _fc->get()[i];
+        Primitive *prim = new Polygon(num_verts, true);
+
+        for (unsigned pv = 0; pv < num_verts; pv++) {
+            prim->vertex(pv) = (*_fi)[v_offset + num_verts - pv -1]; // inverted winding order
+        }
+
+		// Add primitive to obj
+        out.add_primitive(obj, prim);
+
+		// Move offset
+        v_offset += num_verts;
+    }
 }
 
 //-*****************************************************************************

@@ -58,6 +58,10 @@ POSSIBILITY OF SUCH DAMAGE.
 using namespace DD::Image;
 using namespace Alembic::AbcGeom;
 
+void fillPoints(PointList& oPointArray, Alembic::Abc::P3fArraySamplePtr iPoints, Alembic::Abc::P3fArraySamplePtr iCeilPoints, double alpha);
+void readPoly(Alembic::AbcGeom::IPolyMesh iPoly, PointList& oPoints, chrono_t iFrame, bool poly_initialized);
+
+////////////////////////////////////////////////////////////////////////////////////    
 void writePoints(Alembic::AbcGeom::IPolyMesh iPoly, PointList& points, chrono_t curTime, bool interpolate);
 
 void writePoints(Alembic::AbcGeom::ISubD iSub, PointList& points, chrono_t curTime, bool interpolate);
@@ -65,24 +69,33 @@ void writePoints(Alembic::AbcGeom::ISubD iSub, PointList& points, chrono_t curTi
 void writePoints(const Alembic::AbcGeom::IObject iObj, PointList& points, chrono_t curTime, bool interpolate);
 
 void fillPrimitiveIndices(const Alembic::AbcGeom::IObject iObj, Int32ArraySamplePtr& _fc, Int32ArraySamplePtr& _fi, chrono_t curTime);
+void fillPrimitiveIndices(const Alembic::AbcGeom::IPolyMesh poly, Int32ArraySamplePtr& _fc, Int32ArraySamplePtr& _fi, chrono_t curTime);
 
 Alembic::AbcGeom::IV2fGeomParam getUVsParam(const Alembic::AbcGeom::IObject iObj);
+Alembic::AbcGeom::IV2fGeomParam getUVsParam(const Alembic::AbcGeom::IPolyMesh poly);
 
 Alembic::AbcGeom::IN3fGeomParam getNsParam(const Alembic::AbcGeom::IObject iObj);
+Alembic::AbcGeom::IN3fGeomParam getNsParam(const Alembic::AbcGeom::IPolyMesh poly);
 
 void setUVs(GeoInfo& obj, Alembic::AbcGeom::IV2fGeomParam & iUVs, Attribute* UV, chrono_t curTime);
 
 void setNormals(GeoInfo& obj, Alembic::AbcGeom::IN3fGeomParam & Ns, Attribute* N, chrono_t curTime);
 
 bool isTopologyChanging(IObject iObj);
+bool isTopologyChanging(IPolyMesh poly);
 
 bool isTopologyChanging(std::vector<Alembic::AbcGeom::IObject> _objs);
+
+bool isDeforming(IPolyMesh poly);
+bool isNormalChanging(IPolyMesh poly);
+bool isUVChanging(IPolyMesh poly);
 
 Box3d getBounds( IObject iObj, chrono_t curTime );
 
 void buildBboxPrimitives(GeometryList& out, unsigned obj);
 
 void buildABCPrimitives(GeometryList& out, unsigned obj, const Alembic::AbcGeom::IObject iObj, chrono_t curTime);
+void buildABCPrimitives(GeometryList& out, unsigned obj, const Alembic::AbcGeom::IPolyMesh poly, chrono_t curTime);
 
 
 

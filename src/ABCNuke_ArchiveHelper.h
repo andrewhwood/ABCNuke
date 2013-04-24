@@ -37,6 +37,11 @@ POSSIBILITY OF SUCH DAMAGE.
 
 using namespace Alembic::AbcGeom;
 
+void getABCGeosXforms(Alembic::Abc::IObject & iObj,
+                      std::vector<Alembic::AbcGeom::IObject> & _objs,
+                      std::vector<Alembic::AbcGeom::IPolyMesh> & _meshes,
+                      std::vector< std::vector<Alembic::AbcGeom::IXform> > & _xforms);
+
 // Get a list of geometry objects - IPolyMeshes and ISubDs
 void getABCGeos(Alembic::Abc::IObject & iObj,
 				std::vector<Alembic::AbcGeom::IObject> & _objs);

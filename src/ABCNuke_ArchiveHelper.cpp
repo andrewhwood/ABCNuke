@@ -30,8 +30,61 @@ POSSIBILITY OF SUCH DAMAGE.
 //-*****************************************************************************
 #include "ABCNuke_ArchiveHelper.h"
 //-*****************************************************************************
+#include <stdio.h>
+#include <iostream>
 
 using namespace Alembic::AbcGeom;
+
+//kh
+void getABCGeosXforms(Alembic::Abc::IObject & iObj,
+                      std::vector<Alembic::AbcGeom::IObject> & _objs,
+                      std::vector<Alembic::AbcGeom::IPolyMesh> & _meshes,
+                      std::vector< std::vector<Alembic::AbcGeom::IXform> > & _xforms)
+{
+
+
+    unsigned int numChildren = iObj.getNumChildren();
+
+    for (unsigned i=0; i<numChildren; ++i)
+    {
+        IObject child( iObj.getChild( i ));
+        if ( Alembic::AbcGeom::IPolyMesh::matches(child.getHeader()))
+        //     || Alembic::AbcGeom::ISubD::matches(child.getHeader())) 
+        {
+            // add object
+            _objs.push_back(child);
+            
+            // add mesh
+            IPolyMesh poly(child, Alembic::Abc::kWrapExisting);
+            _meshes.push_back(poly);
+
+            // add all the xforms for the object to the list
+            std::vector<Alembic::AbcGeom::IXform> xfs;
+            
+            IObject parent = iObj;
+
+            while ( parent )
+            {
+                if ( IXform::matches( parent.getHeader() ) )
+                {
+                    IXform xf( parent, kWrapExisting );
+                    xfs.push_back( xf );
+                }
+                parent = parent.getParent();
+
+            }
+            _xforms.push_back( xfs );
+        }
+
+        
+        if (child.getNumChildren() > 0) 
+        {
+            getABCGeosXforms(child, _objs, _meshes, _xforms);
+        }
+        
+    }
+}
+// end kh
 
 void getABCGeos(Alembic::Abc::IObject & iObj,
 		std::vector<Alembic::AbcGeom::IObject> & _objs)
@@ -150,12 +203,7 @@ void getXformTimeSpan(IXform iXf, chrono_t& first, chrono_t& last, bool inherits
 	IXformSchema xf = iXf.getSchema();
 	TimeSamplingPtr ts = xf.getTimeSampling();
 	first = std::min(first, ts->getSampleTime(0) );
-	if (xf.isConstant()) {
-		last = first;
-	}
-	else {
-		last = std::max(last, ts->getSampleTime(xf.getNumSamples()-1) );
-	}
+	last = std::max(last, ts->getSampleTime(xf.getNumSamples()-1) );
 	if (inherits && xf.getInheritsXforms()) {
 		IObject parent = iXf.getParent();
 
@@ -179,12 +227,7 @@ void getCameraTimeSpan(ICamera iCam, chrono_t& first, chrono_t& last) {
 	ICameraSchema cam = iCam.getSchema();
 	TimeSamplingPtr ts = cam.getTimeSampling();
 	first = std::min(first, ts->getSampleTime(0) );
-	if (cam.isConstant()) {
-		last = first;
-	}
-	else {
-		last = std::max(last, ts->getSampleTime(cam.getNumSamples()-1) );
-	}
+	last = std::max(last, ts->getSampleTime(cam.getNumSamples()-1) );
 }
 
 //-*****************************************************************************
@@ -194,12 +237,7 @@ void getPolyMeshTimeSpan(IPolyMesh iPoly, chrono_t& first, chrono_t& last) {
 	IPolyMeshSchema mesh = iPoly.getSchema();
 	TimeSamplingPtr ts = mesh.getTimeSampling();
 	first = std::min(first, ts->getSampleTime(0) );
-	if (mesh.isConstant()) {
-		last = first;
-	}
-	else {
-		last = std::max(last, ts->getSampleTime(mesh.getNumSamples()-1) );
-	}
+	last = std::max(last, ts->getSampleTime(mesh.getNumSamples()-1) );
 }
 
 //-*****************************************************************************
@@ -209,13 +247,9 @@ void getSubDTimeSpan(ISubD iSub, chrono_t& first, chrono_t& last) {
 	ISubDSchema mesh = iSub.getSchema();
 	TimeSamplingPtr ts = mesh.getTimeSampling();
 	first = std::min(first, ts->getSampleTime(0) );
-	if (mesh.isConstant()) {
-		last = first;
-	}
-	else {
-		last = std::max(last, ts->getSampleTime(mesh.getNumSamples()-1) );
-	}
+	last = std::max(last, ts->getSampleTime(mesh.getNumSamples()-1) );
 }
+
 //-*****************************************************************************
 
 void getObjectTimeSpan(IObject obj, chrono_t& first, chrono_t& last, bool doChildren)
@@ -258,19 +292,10 @@ void getABCTimeSpan(IArchive archive, chrono_t& first, chrono_t& last)
 		return;
 
 	IObject archiveTop = archive.getTop();
-    if ( archiveTop.getProperties().getPropertyHeader( ".childBnds" ) != NULL ) { // Try to get timing from childBounds first
-
-        IBox3dProperty childbnds = Alembic::Abc::IBox3dProperty( archive.getTop().getProperties(),
-                                   ".childBnds", ErrorHandler::kQuietNoopPolicy); 
-    	TimeSamplingPtr ts = childbnds.getTimeSampling();
-		first = std::min(first, ts->getSampleTime(0) );
-		last = std::max(last, ts->getSampleTime(childbnds.getNumSamples()-1) );
-        return;
-    }
 
 	unsigned int numChildren = archiveTop.getNumChildren();
 
-	for (unsigned i=0; i<numChildren; ++i)  // Visit every object to get its first and last sample
+	for (unsigned i=0; i<numChildren; ++i)
 	{
 		IObject obj( archiveTop.getChild( i ));
 		getObjectTimeSpan(obj, first, last, true);

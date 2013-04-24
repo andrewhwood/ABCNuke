@@ -210,7 +210,7 @@ void accumXform( Imath::M44d &xf, IObject obj, chrono_t curTime, bool interpolat
 	}
 }
 
-Matrix4 convert( const Imath::M44d &from )
+Matrix4 convert( const Abc::M44d &from )
 {
 	Matrix4 result;
 	for( unsigned int i=0; i<4; i++ )
@@ -225,7 +225,7 @@ Matrix4 convert( const Imath::M44d &from )
 
 Imath::M44d convert( const Matrix4 &from )
 {
-	Imath::M44d result;
+	Abc::M44d result;
 	for( unsigned int i=0; i<4; i++ )
 	{
 		for( unsigned int j=0; j<4; j++ )
@@ -236,22 +236,122 @@ Imath::M44d convert( const Matrix4 &from )
 	return result;
 }
 
+void accumXform2( Abc::M44d &xf, IObject obj, chrono_t curTime, bool interpolate)
+{
+    if ( IXform::matches( obj.getHeader() ) )
+    {
+        IXform x( obj, kWrapExisting );
+        //x.getSchema().get( xs );
+                
+        Alembic::AbcCoreAbstract::index_t index, ceilIndex;
+        TimeSamplingPtr timeSampler = x.getSchema().getTimeSampling();
+                
+        double alpha = getWeightAndIndex(curTime, 
+                                       timeSampler, 
+                                       x.getSchema().getNumSamples(), 
+                                       index, 
+                                       ceilIndex);
+
+        Abc::M44d m;
+        Alembic::AbcGeom::XformSample samp;
+        
+        if ( alpha != 0.0 && index != ceilIndex) {
+            x.getSchema().get(samp, Alembic::Abc::ISampleSelector(index));
+            Alembic::Abc::M44d mlo = samp.getMatrix();
+            
+            x.getSchema().get(samp, Alembic::Abc::ISampleSelector(ceilIndex));
+            Alembic::Abc::M44d mhi = samp.getMatrix();
+            
+            m = ((1 - alpha ) * mlo) + (alpha * mhi);
+        }
+        else
+        {
+            x.getSchema().get(samp, Alembic::Abc::ISampleSelector(index));
+            m = samp.getMatrix();
+        }
+        
+        xf *= m;
+    }
+}
+
+void accumXform2( Abc::M44d &xf, IXform x, chrono_t curTime, bool interpolate)
+{
+    Alembic::AbcCoreAbstract::index_t index, ceilIndex;
+    TimeSamplingPtr timeSampler = x.getSchema().getTimeSampling();
+            
+    double alpha = getWeightAndIndex(curTime, 
+                                        timeSampler, 
+                                        x.getSchema().getNumSamples(), 
+                                        index, 
+                                        ceilIndex);
+
+    Abc::M44d m;
+    Alembic::AbcGeom::XformSample samp;
+    
+    if ( alpha != 0.0 && index != ceilIndex) {
+        x.getSchema().get(samp, Alembic::Abc::ISampleSelector(index));
+        Alembic::Abc::M44d mlo = samp.getMatrix();
+        
+        x.getSchema().get(samp, Alembic::Abc::ISampleSelector(ceilIndex));
+        Alembic::Abc::M44d mhi = samp.getMatrix();
+        
+        m = ((1 - alpha ) * mlo) + (alpha * mhi);
+    }
+    else
+    {
+        x.getSchema().get(samp, Alembic::Abc::ISampleSelector(index));
+        m = samp.getMatrix();
+    }
+    
+    xf *= m;
+}
 
 const Matrix4 getConcatMatrix( IObject iObj, chrono_t curTime , bool interpolate)
 {
-	Imath::M44d xf;
+	Abc::M44d xf;
 	xf.makeIdentity();
 	IObject parent = iObj.getParent();
-
-	// Once the Archive's Top Object is reached, IObject::getParent() will
+        
+        struct timeval tv1, tv2;
+        gettimeofday(&tv1, NULL);
+	
+        // Once the Archive's Top Object is reached, IObject::getParent() will
 	// return an invalid IObject, and that will evaluate to False.
-	while ( parent )
+        int depth = 0;
+        //accumXform2( xf, parent, curTime, interpolate );
+        
+        while ( parent )
 	{
-		accumXform( xf, parent, curTime, interpolate );
+                if ( IXform::matches( parent.getHeader() ) )
+                {
+                    gettimeofday(&tv1, NULL);
+                    IXform x( parent, kWrapExisting );
+                    gettimeofday(&tv2, NULL);
+                    float tx =  (tv2.tv_sec + tv2.tv_usec / 1000000.0) - ( tv1.tv_sec + tv1.tv_usec / 1000000.0);
+                    printf("    %f seconds for IXform from IObject\n", tx);
+                }
+                      
+                //accumXform2( xf, parent, curTime, interpolate );
 		parent = parent.getParent();
+                //depth++;
 	}
+        
 
 	Matrix4 ret_matrix = convert(xf);
+        
+        //printf( "node: %s, depth: %d\n", iObj.getName().c_str(), depth);
 
 	return ret_matrix;
+}
+
+const Matrix4 getConcatMatrix( std::vector<Alembic::AbcGeom::IXform> xforms, chrono_t curTime , bool interpolate)
+{
+    Abc::M44d xf;
+    xf.makeIdentity();
+        
+    for (unsigned i=0; i < xforms.size(); i++)
+        accumXform2( xf, xforms[i], curTime, interpolate );
+    
+    Matrix4 ret_matrix = convert(xf);
+    return ret_matrix;
 }

@@ -46,4 +46,10 @@ double getWeightAndIndex(double iFrame,
 // Not needed. Using OpenEXR::Imath functions for now
 DD::Image::Matrix4 Matrix4_lerp(const DD::Image::Matrix4 &start_mtx, const DD::Image::Matrix4 &end_mtx, double amt);
 
+template<typename T>
+        T simpleLerp(double alpha, T val1, T val2)
+{
+    double dv = static_cast<double>( val1 );
+    return static_cast<T>( dv + alpha * (static_cast<double>(val2) - dv) );
+}
 #endif

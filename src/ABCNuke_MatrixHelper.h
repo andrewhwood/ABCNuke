@@ -30,6 +30,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifndef _ABCNuke_MatrixHelper_h_
 #define _ABCNuke_MatrixHelper_h_
 
+#include <sys/time.h>
+
 #include "DDImage/Vector3.h"
 #include "DDImage/Matrix4.h"
 #include "DDImage/Quaternion.h"
@@ -55,8 +57,11 @@ M44d RecomposeXForm(const Imath::V3d &scale, const Imath::V3d &shear, const Imat
 
 Imath::V3d lerp(const Imath::V3d &a, const Imath::V3d &b, double amt);
 void accumXform( Imath::M44d &xf, IObject obj, chrono_t curTime = 0, bool interpolate = false);
+void accumXform2( Imath::M44d &xf, IObject obj, chrono_t curTime = 0, bool interpolate = false);
+void accumXform2( Imath::M44d &xf, IXform x, chrono_t curTime = 0, bool interpolate = false);
 Matrix4 convert( const Imath::M44d &from );
 Imath::M44d convert( const Matrix4 &from );
 const Matrix4 getConcatMatrix( IObject iObj, chrono_t curTime = 0, bool interpolate = false);
+const Matrix4 getConcatMatrix( std::vector<IXform> xforms, chrono_t curTime = 0 , bool interpolate = false);
 
 #endif
